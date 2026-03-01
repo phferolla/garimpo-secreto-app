@@ -1,35 +1,57 @@
 "use client"
 
-import { supabase } from "../../lib/supabase"
 import { useEffect, useState } from "react"
+import { supabase } from "@/lib/supabase"
 
 export default function Admin() {
   const [user, setUser] = useState<any>(null)
+  const [loadingAuth, setLoadingAuth] = useState(true)
+
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+
   const [produtos, setProdutos] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+
   const [form, setForm] = useState({
     nome: "",
+    descricao: "",
     preco: "",
+    preco_antigo: "",
     imagem_url: "",
+    categoria: "",
     link_afiliado: "",
-    categoria: ""
+    destaque: false,
+    ativo: true,
   })
 
   useEffect(() => {
-    verificarSessao()
+    verificarUsuario()
   }, [])
 
-  async function verificarSessao() {
-    const { data } = await supabase.auth.getSession()
-    setUser(data.session?.user || null)
+  async function verificarUsuario() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
 
-    if (data.session?.user) {
-      carregarProdutos()
-    }
+    setUser(session?.user ?? null)
+    setLoadingAuth(false)
+
+    if (session?.user) carregarProdutos()
   }
 
-  async function login(email: string, password: string) {
-    await supabase.auth.signInWithPassword({ email, password })
-    verificarSessao()
+  async function login() {
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (error) {
+      alert("Erro no login")
+      return
+    }
+
+    verificarUsuario()
   }
 
   async function logout() {
@@ -43,191 +65,279 @@ export default function Admin() {
       .select("*")
       .order("criado_em", { ascending: false })
 
-    setProdutos(data || [])
+    if (data) setProdutos(data)
   }
 
-  async function criarProduto() {
-    await supabase.from("produtos").insert([
-      {
-        ...form,
-        ativo: true,
-        destaque: false,
-        cliques: 0
-      }
-    ])
+  async function salvarProduto() {
+    if (!form.nome || !form.preco) {
+      alert("Preencha nome e preço")
+      return
+    }
+
+    setLoading(true)
+
+    await supabase.from("produtos").insert([form])
 
     setForm({
       nome: "",
+      descricao: "",
       preco: "",
+      preco_antigo: "",
       imagem_url: "",
+      categoria: "",
       link_afiliado: "",
-      categoria: ""
+      destaque: false,
+      ativo: true,
     })
 
-    carregarProdutos()
+    await carregarProdutos()
+    setLoading(false)
   }
 
-  async function deletarProduto(id: string) {
+  async function excluirProduto(id: string) {
     await supabase.from("produtos").delete().eq("id", id)
     carregarProdutos()
   }
 
-  async function toggleAtivo(produto: any) {
+  async function toggleCampo(
+    id: string,
+    campo: "ativo" | "destaque",
+    valor: boolean
+  ) {
     await supabase
       .from("produtos")
-      .update({ ativo: !produto.ativo })
-      .eq("id", produto.id)
+      .update({ [campo]: !valor })
+      .eq("id", id)
 
     carregarProdutos()
   }
 
-  async function toggleDestaque(produto: any) {
-    await supabase
-      .from("produtos")
-      .update({ destaque: !produto.destaque })
-      .eq("id", produto.id)
-
-    carregarProdutos()
+  if (loadingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white text-black">
+        Carregando...
+      </div>
+    )
   }
 
+  // LOGIN
   if (!user) {
     return (
-      <main className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="bg-gray-900 p-8 rounded-2xl w-96 space-y-4">
-          <h1 className="text-2xl font-bold text-center">🔐 Login Admin</h1>
+      <div className="min-h-screen flex items-center justify-center bg-white">
+
+        <div className="bg-white border border-gray-200 shadow-xl rounded-2xl p-10 w-[420px]">
+
+          <h1 className="text-3xl font-bold text-center mb-8 text-gray-900">
+            Login Admin
+          </h1>
 
           <input
+            type="email"
             placeholder="Email"
-            onBlur={(e) => (window as any).adminEmail = e.target.value}
-            className="w-full p-3 rounded bg-gray-800"
+            className="border border-gray-300 p-3 rounded-xl w-full mb-4 text-black"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
 
           <input
             type="password"
             placeholder="Senha"
-            onBlur={(e) => (window as any).adminPassword = e.target.value}
-            className="w-full p-3 rounded bg-gray-800"
+            className="border border-gray-300 p-3 rounded-xl w-full mb-6 text-black"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
           />
 
           <button
-            onClick={() =>
-              login(
-                (window as any).adminEmail,
-                (window as any).adminPassword
-              )
-            }
-            className="w-full bg-red-600 py-3 rounded-xl font-bold hover:bg-red-700 transition"
+            onClick={login}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-semibold transition"
           >
-            ENTRAR
+            Entrar
           </button>
+
         </div>
-      </main>
+      </div>
     )
   }
 
-  const totalCliques = produtos.reduce(
-    (acc, p) => acc + (p.cliques || 0),
-    0
-  )
-
   return (
-    <main className="min-h-screen bg-black text-white p-10">
+    <main className="min-h-screen bg-gray-50 text-gray-900 p-10">
 
+      {/* TOPO */}
       <div className="flex justify-between items-center mb-10">
-        <h1 className="text-4xl font-bold">🔧 PAINEL ADMIN</h1>
-        <button onClick={logout} className="bg-red-600 px-5 py-2 rounded-lg">
+        <h1 className="text-4xl font-bold">
+          Painel Administrativo
+        </h1>
+
+        <button
+          onClick={logout}
+          className="text-red-600 font-semibold"
+        >
           Sair
         </button>
       </div>
 
-      {/* DASHBOARD */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-        <div className="bg-gray-900 p-6 rounded-2xl">
-          <p className="text-gray-400">Total de Produtos</p>
-          <h2 className="text-3xl font-bold">{produtos.length}</h2>
-        </div>
-
-        <div className="bg-gray-900 p-6 rounded-2xl">
-          <p className="text-gray-400">Total de Cliques</p>
-          <h2 className="text-3xl font-bold text-yellow-400">
-            {totalCliques}
-          </h2>
-        </div>
-
-        <div className="bg-gray-900 p-6 rounded-2xl">
-          <p className="text-gray-400">Produtos Ativos</p>
-          <h2 className="text-3xl font-bold text-green-400">
-            {produtos.filter((p) => p.ativo).length}
-          </h2>
-        </div>
-      </div>
-
       {/* FORM */}
-      <div className="bg-gray-900 p-6 rounded-2xl mb-10 space-y-4">
-        <h2 className="text-xl font-bold">Adicionar Produto</h2>
+      <div className="bg-white border border-gray-200 shadow-lg rounded-2xl p-8 mb-14">
 
-        {Object.keys(form).map((key) => (
+        <h2 className="text-2xl font-semibold mb-6">
+          Adicionar Produto
+        </h2>
+
+        <div className="grid md:grid-cols-2 gap-4">
+
           <input
-            key={key}
-            placeholder={key}
-            value={(form as any)[key]}
-            onChange={(e) =>
-              setForm({ ...form, [key]: e.target.value })
-            }
-            className="w-full p-3 rounded bg-gray-800"
+            placeholder="Nome"
+            value={form.nome}
+            onChange={(e) => setForm({ ...form, nome: e.target.value })}
+            className="border p-3 rounded-xl"
           />
-        ))}
+
+          <input
+            placeholder="Categoria"
+            value={form.categoria}
+            onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+            className="border p-3 rounded-xl"
+          />
+
+          <input
+            placeholder="Preço Atual"
+            value={form.preco}
+            onChange={(e) => setForm({ ...form, preco: e.target.value })}
+            className="border p-3 rounded-xl"
+          />
+
+          <input
+            placeholder="Preço Antigo"
+            value={form.preco_antigo}
+            onChange={(e) =>
+              setForm({ ...form, preco_antigo: e.target.value })
+            }
+            className="border p-3 rounded-xl"
+          />
+
+          <input
+            placeholder="Imagem URL"
+            value={form.imagem_url}
+            onChange={(e) =>
+              setForm({ ...form, imagem_url: e.target.value })
+            }
+            className="border p-3 rounded-xl"
+          />
+
+          <input
+            placeholder="Link Afiliado"
+            value={form.link_afiliado}
+            onChange={(e) =>
+              setForm({ ...form, link_afiliado: e.target.value })
+            }
+            className="border p-3 rounded-xl"
+          />
+        </div>
+
+        <textarea
+          placeholder="Descrição"
+          value={form.descricao}
+          onChange={(e) =>
+            setForm({ ...form, descricao: e.target.value })
+          }
+          className="border p-3 rounded-xl w-full mt-4"
+        />
+
+        <div className="flex gap-8 mt-6">
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.destaque}
+              onChange={(e) =>
+                setForm({ ...form, destaque: e.target.checked })
+              }
+            />
+            Destaque
+          </label>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.ativo}
+              onChange={(e) =>
+                setForm({ ...form, ativo: e.target.checked })
+              }
+            />
+            Ativo
+          </label>
+
+        </div>
 
         <button
-          onClick={criarProduto}
-          className="w-full bg-green-600 py-3 rounded-xl font-bold hover:bg-green-700 transition"
+          onClick={salvarProduto}
+          disabled={loading}
+          className="mt-6 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold transition"
         >
-          ADICIONAR
+          {loading ? "Salvando..." : "Salvar Produto"}
         </button>
       </div>
 
       {/* LISTA */}
-      <div className="space-y-4">
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+
         {produtos.map((produto) => (
           <div
             key={produto.id}
-            className="bg-gray-900 p-5 rounded-2xl flex justify-between items-center"
+            className="bg-white border border-gray-200 rounded-2xl p-5 shadow"
           >
-            <div>
-              <h2 className="font-bold text-lg">{produto.nome}</h2>
-              <p className="text-gray-400">
-                R$ {produto.preco} • {produto.cliques} cliques
-              </p>
-              <p className="text-sm">
-                {produto.ativo ? "🟢 Ativo" : "🔴 Inativo"} •{" "}
-                {produto.destaque ? "⭐ Destaque" : "Sem destaque"}
-              </p>
-            </div>
+            <img
+              src={produto.imagem_url}
+              className="w-full h-40 object-cover rounded-xl mb-4"
+            />
 
-            <div className="flex gap-3">
+            <h3 className="font-semibold text-lg mb-1">
+              {produto.nome}
+            </h3>
+
+            <p className="text-blue-600 font-bold mb-3">
+              R$ {produto.preco}
+            </p>
+
+            <div className="flex gap-3 flex-wrap text-sm">
+
               <button
-                onClick={() => toggleAtivo(produto)}
-                className="bg-yellow-600 px-4 py-2 rounded-lg"
+                onClick={() =>
+                  toggleCampo(produto.id, "ativo", produto.ativo)
+                }
+                className={`px-3 py-1 rounded-full ${
+                  produto.ativo
+                    ? "bg-green-100 text-green-700"
+                    : "bg-red-100 text-red-700"
+                }`}
               >
-                Ativar
+                {produto.ativo ? "Ativo" : "Inativo"}
               </button>
 
               <button
-                onClick={() => toggleDestaque(produto)}
-                className="bg-blue-600 px-4 py-2 rounded-lg"
+                onClick={() =>
+                  toggleCampo(produto.id, "destaque", produto.destaque)
+                }
+                className={`px-3 py-1 rounded-full ${
+                  produto.destaque
+                    ? "bg-yellow-100 text-yellow-800"
+                    : "bg-gray-100 text-gray-600"
+                }`}
               >
-                Destaque
+                {produto.destaque ? "⭐ Destaque" : "Destacar"}
               </button>
 
               <button
-                onClick={() => deletarProduto(produto.id)}
-                className="bg-red-600 px-4 py-2 rounded-lg"
+                onClick={() => excluirProduto(produto.id)}
+                className="px-3 py-1 rounded-full bg-red-100 text-red-700"
               >
                 Excluir
               </button>
+
             </div>
           </div>
         ))}
+
       </div>
 
     </main>
